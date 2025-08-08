@@ -6,6 +6,7 @@ import ast
 import math
 import torch.optim as optim
 import torch.nn.functional as F  # Missing - used in MaskedMultiHeadSelfAttentionBlock
+from rdkit import Chem
 
 
 import numpy as np
@@ -52,7 +53,9 @@ class Decoder(Model):
 
 
         self.config = Config()
+        
         self.spange_featuriser = SpangeDataset(spange_path, self.config.column_dict,  self.config.word_tokens,  self.config.token_types,  self.config.max_sequence_length)
+        print(f"SPANGE featuriser initialized with solvents.")
         self.chemberta_dimension = self.spange_featuriser.chemberta_dim()
 
 
@@ -60,7 +63,7 @@ class Decoder(Model):
             model_path=pretrained_model_path,
             chemberta_dimension=self.chemberta_dimension
         )
-
+        print(f"FP model loaded from {pretrained_model_path}.")
 
         self.NN_model = NeuralNetworkModel(
             input_dim=128,
@@ -94,6 +97,7 @@ class Decoder(Model):
         Returns:
             Loaded model
         """
+
         model = MultiModalRegressionTransformer(
             chemberta_fp_dim=chemberta_dimension,
             column_vocab_size=self.config.word_vocab_size,
@@ -110,52 +114,46 @@ class Decoder(Model):
         
         return model
     
-    def train_test_split_and_zscore_normalize_solvent_leakage(self, df, smiles_sample):
+    def train_test_split_and_zscore_normalize_solvent_leakage(self, df, smiles_sample, target_cols):
         """
-        Splits the DataFrame into training and validation sets by holding out
-        all data points corresponding to 3 random 'SMILES' strings for validation.
-        Then, it performs Z-score normalization based ONLY on the training data
-        and applies the normalization to both sets.
-        
+        Splits the DataFrame and normalizes ONLY the feature columns.
+        Target columns are not normalized.
+
         Args:
-            data_path (str): The path to the CSV file to load.
+            df (pd.DataFrame): The input DataFrame.
+            smiles_sample (int): The number of SMILES strings to hold out for validation.
+            target_cols (list): A list of column names that are targets and should not be normalized.
         
         Returns:
             tuple: A tuple containing:
-                - pd.DataFrame: Normalized training set.
-                - pd.DataFrame: Normalized validation set.
-                - dict: A dictionary of Z-score normalization parameters (mean and std)
-                        used for each numerical column, calculated from the training set.
+                   - pd.DataFrame: Normalized training set.
+                   - pd.DataFrame: Normalized validation set.
+                   - dict: Normalization parameters (mean/std or min/max) for the feature columns.
         """
-        # Assuming load_and_clean_csv is a function you have defined elsewhere
-        
         if df is None or df.empty:
             raise ValueError("DataFrame is empty or not loaded correctly.")
+        if 'SOLVENT SMILES' not in df.columns:
+            raise ValueError("The DataFrame must contain a 'SOLVENT SMILES' column.")
         
-        if 'SMILES' not in df.columns:
-            raise ValueError("The DataFrame must contain a 'SMILES' column.")
+        df.drop(columns=['Reaction SMILES', 'SOLVENT NAME'], inplace=True, errors='ignore')
+        print('here are columns:', df.columns)
 
-        smiles_strings = df['SMILES'].unique()
+        smiles_strings = df['SOLVENT SMILES'].unique()
         
-        # Check if there are enough unique SMILES strings to sample
         if len(smiles_strings) < smiles_sample:
             raise ValueError(
-                f"Not enough unique SMILES strings to sample 3 for validation. Found only {len(smiles_strings)}."
+                f"Not enough unique SMILES strings to sample {smiles_sample} for validation. Found only {len(smiles_strings)}."
             )
 
-        # 1. Randomly select 3 SMILES strings to use for the validation set
+        # 1. Split data
         validation_smiles = np.random.choice(smiles_strings, size=smiles_sample, replace=False)
+        val_df = df[df['SOLVENT SMILES'].isin(validation_smiles)].copy()
+        train_df = df[~df['SOLVENT SMILES'].isin(validation_smiles)].copy()
         
-        # 2. Split the data based on the selected SMILES strings
-        val_df = df[df['SMILES'].isin(validation_smiles)].copy()
-        train_df = df[~df['SMILES'].isin(validation_smiles)].copy()
-        
-        # Check if the split resulted in non-empty dataframes
         if train_df.empty or val_df.empty:
             raise ValueError("The split resulted in an empty training or validation set. Try running again.")
 
-        # 3. Identify numerical columns based on the training data
-        # Exclude 'SMILES' as it is a categorical identifier
+        # 2. Identify numerical columns to potentially normalize
         numerical_cols = train_df.select_dtypes(include=np.number).columns
         
         if numerical_cols.empty:
@@ -164,70 +162,86 @@ class Decoder(Model):
             
         normalization_params = {}
         
-        # 4. Calculate mean and std deviation ONLY from the TRAINING set
+        # 3. Define bounds for min-max normalization for specific feature columns
+        bounds = {
+            "Residence Time": [0.0, 15.0],
+            "Temperature": [175.0, 225.0],
+        }
+
+        # Apply min-max normalization to specified feature columns
+        for column, (c_min, c_max) in bounds.items():
+            if column in train_df.columns and (c_max - c_min) != 0:
+                train_df.loc[:, column] = (train_df[column] - c_min) / (c_max - c_min)
+                val_df.loc[:, column] = (val_df[column] - c_min) / (c_max - c_min)
+                normalization_params[column] = {'min': c_min, 'max': c_max}
+
+        # 4. Apply Z-score normalization for other numerical feature columns
         for col in numerical_cols:
+            # Skip columns already min-max normalized OR if they are a target column
+            if col in bounds or col in target_cols:
+                continue
+            
             col_mean = train_df[col].mean()
             col_std = train_df[col].std(ddof=0)
             
-            # Store the parameters
             normalization_params[col] = {'mean': col_mean, 'std': col_std}
 
-            # 5. Normalize BOTH the training and validation sets using these parameters
             if col_std == 0:
-                train_df[col] = 0.0
-                val_df[col] = 0.0
+                train_df.loc[:, col] = 0.0
+                val_df.loc[:, col] = 0.0
             else:
                 train_df.loc[:, col] = (train_df[col] - col_mean) / col_std
                 val_df.loc[:, col] = (val_df[col] - col_mean) / col_std
-                
+        
         return train_df, val_df, normalization_params
     
     def normalize_or_unnormalize_df(self, df, normalization_params, command):
         """
-        Normalizes or unnormalizes a pandas DataFrame using pre-calculated
-        mean and standard deviation values.
+        Normalizes or unnormalizes a DataFrame using pre-calculated parameters.
+        Can handle both Z-score ('mean', 'std') and Min-Max ('min', 'max') parameters.
 
         Args:
             df (pd.DataFrame): The DataFrame to process.
-            normalization_params (dict): A dictionary containing the normalization
-                                        parameters for each column, e.g.,
-                                        {'col_name': {'mean': ..., 'std': ...}}.
-            command (str): The command to perform, either 'normalize' or 'unnormalize'.
+            normalization_params (dict): Parameters for each column.
+            command (str): Either 'normalize' or 'unnormalize'.
 
         Returns:
             pd.DataFrame: The processed DataFrame.
         """
-        # Make a copy of the DataFrame to avoid modifying the original
         processed_df = df.copy()
 
-        # Iterate through the columns for which we have normalization parameters
         for col, params in normalization_params.items():
             if col in processed_df.columns:
-                col_mean = params['mean']
-                col_std = params['std']
+                # Check for Z-score parameters
+                if 'mean' in params and 'std' in params:
+                    col_mean, col_std = params['mean'], params['std']
+                    if command == 'normalize':
+                        processed_df.loc[:, col] = (processed_df[col] - col_mean) / col_std if col_std != 0 else 0.0
+                    elif command == 'unnormalize':
+                        processed_df.loc[:, col] = (processed_df[col] * col_std) + col_mean
 
-                if command == 'normalize':
-                    # Handle case where standard deviation is 0 to avoid division by zero
-                    if col_std != 0:
-                        processed_df.loc[:, col] = (processed_df[col] - col_mean) / col_std
-                    else:
-                        processed_df.loc[:, col] = 0.0
-                elif command == 'unnormalize':
-                    processed_df.loc[:, col] = (processed_df[col] * col_std) + col_mean
+                # Check for Min-Max parameters
+                elif 'min' in params and 'max' in params:
+                    c_min, c_max = params['min'], params['max']
+                    if command == 'normalize':
+                        processed_df.loc[:, col] = (processed_df[col] - c_min) / (c_max - c_min) if (c_max - c_min) != 0 else 0.0
+                    elif command == 'unnormalize':
+                        processed_df.loc[:, col] = processed_df[col] * (c_max - c_min) + c_min
+                
                 else:
-                    print(f"Warning: Command '{command}' not recognized. Column '{col}' was not processed.")
+                     if command not in ['normalize', 'unnormalize']:
+                        print(f"Warning: Command '{command}' not recognized. Column '{col}' was not processed.")
 
         return processed_df
     
     def collate_fn(self, batch):
         # Stack inputs from batch
-        batch_df = pd.concat(batch)
+        batch_df = pd.DataFrame(batch)
         targets = []
-        smiles_column = self.column_dict['SMILES_COLUMNS']
-        ratio_column = self.column_dict['RATIO']
-        res_temp_cols = self.column_dict['RES_TEMP_COLUMNS']
-        targets_col = self.column_dict['YIELD_COLUMNS']
-
+        smiles_column = self.config.column_dict['SOLVE_SMILES_COLUMN']
+        ratio_column = self.config.column_dict['RATIO']
+        res_temp_cols = self.config.column_dict['RES_TEMP_COLUMNS']
+        targets_col = self.config.column_dict['YIELD_COLUMNS']
         smiles = batch_df[smiles_column].to_list()
         ratios = batch_df[ratio_column].to_list()
 
@@ -253,11 +267,11 @@ class Decoder(Model):
             'ratios': ratios,
             'targets': targets, # Contains MASK_TOKEN for MLM-masked positions, original types otherwise.
         }        
-    
     def generate_fp(self, model, batch_smiles, ratios, featuriser):
         look_up = {}
         count = 0
         total_smiles = []
+
         for index, smiles in enumerate(batch_smiles):
             indicies = []
             look_up[index] = {}
@@ -265,15 +279,16 @@ class Decoder(Model):
 
             look_up[index]['smiles'] = line_smiles
             look_up[index]['ratio'] = ast.literal_eval(ratios[index])
+
             for i in range(len(look_up[index]['ratio'])):
                 total_smiles.append(line_smiles[i])
                 indicies.append(count)
                 count += 1
             look_up[index]['tensor_indices'] = indicies
-
+        total_smiles = self.config.canonicalize_smiles(total_smiles)
         sequence_dict = featuriser.decoder_input_tensor(total_smiles)
-        
         SMILES_fps = sequence_dict['SMILES_fps']
+
         word_tokens_ref = sequence_dict['word_tokens_ref']
         values_ref = sequence_dict['values_ref']
         token_type_ids = sequence_dict['token_type_ids']
@@ -315,8 +330,12 @@ class Decoder(Model):
 
     def _train(self, train_X, train_Y):
         data_df = pd.concat([train_X, train_Y], axis=1)
-        train_df, val_df, self.normalization_params = self.train_test_split_and_zscore_normalize_solvent_leakage(data_df, 
-                                                                                                            smiles_sample=3)
+        # Pass target columns to prevent their normalization
+        train_df, val_df, self.normalization_params = self.train_test_split_and_zscore_normalize_solvent_leakage(
+            data_df, 
+            smiles_sample=3,
+            target_cols=train_Y.columns
+        )
         
         train_dataset = MolecularPropertyDataset(train_df, self.config.column_dict)
         val_dataset = MolecularPropertyDataset(val_df, self.config.column_dict)
@@ -328,120 +347,101 @@ class Decoder(Model):
         print(f"Training started at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.training_start_time))}")
         print(f"Time limit: {self.time_limit/3600:.1f} hours ({self.time_limit} seconds)")
 
-        
         best_val_loss = float('inf')
         self.best_FP_model_state = None
         self.best_NN_model_state = None
+        
         for epoch in range(self.epochs):
             self.FP_model.train()
             self.NN_model.train()
-
-            
             epoch_loss = 0
 
             for batch_idx, batch_train in enumerate(tqdm(dataloader_train, desc=f"Training Epoch {epoch + 1}/{self.epochs}")):
-                # CHECK TIME LIMIT EVERY 10 BATCHES (adjust frequency as needed)
                 if batch_idx % 10 == 0:
                     elapsed_time = time.time() - self.training_start_time
                     if elapsed_time >= self.time_limit:
                         self.early_stop_reason = f"Time limit reached during training batch {batch_idx}"
                         print(f"\n⏰ {self.early_stop_reason}")
                         break
-                # Extract inputs and targets from the batch
-                res_time = batch_train['res_time']
-                temp = batch_train['temp']
-                smiles = batch_train['smiles']
-                ratios = batch_train['ratios']
-                targets = batch_train['targets']
+                
+                res_time, temp, smiles, ratios, targets = (
+                    batch_train['res_time'], batch_train['temp'], batch_train['smiles'],
+                    batch_train['ratios'], batch_train['targets']
+                )
 
                 self.FP_optimizer.zero_grad()
                 self.NN_optimizer.zero_grad()
 
-
                 solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser)
-                # Forward pass through the neural network model
                 yield_predictions = self.NN_model(solvent_fp, res_time, temp)
 
                 train_loss = self.criterion(yield_predictions, targets)
                 train_loss.backward()
                 self.FP_optimizer.step()
                 self.NN_optimizer.step()
-
                 epoch_loss += train_loss.item()
-
+            
             avg_epoch_loss = epoch_loss / len(dataloader_train)
 
-            #validation phase
+            # Validation phase (now simpler)
             self.FP_model.eval()
             self.NN_model.eval()
             epoch_val_loss = 0
-            unnorm_epoch_val_loss = 0
-            target_cols = self.config.column_dict['YIELD_COLUMNS']
-            output_means = torch.tensor([self.normalization_params[col]['mean'] for col in target_cols])
-            output_stds = torch.tensor([self.normalization_params[col]['std'] for col in target_cols])
             with torch.no_grad():
                 for batch_val in tqdm(dataloader_val, desc=f"Validation Epoch {epoch + 1}/{self.epochs}"):
-                    res_time = batch_val['res_time']
-                    temp = batch_val['temp']
-                    smiles = batch_val['smiles']
-                    ratios = batch_val['ratios']
-                    targets = batch_val['targets']
-
+                    res_time, temp, smiles, ratios, targets = (
+                        batch_val['res_time'], batch_val['temp'], batch_val['smiles'],
+                        batch_val['ratios'], batch_val['targets']
+                    )
                     solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser)
                     yield_predictions = self.NN_model(solvent_fp, res_time, temp)
-
+                    
+                    # Loss is calculated directly on raw-scale values
                     val_loss = self.criterion(yield_predictions, targets)
                     epoch_val_loss += val_loss.item()
 
-                    unnorm_predictions = (yield_predictions * output_stds) + output_means
-                
-                    # Unnormalize targets
-                    unnorm_targets = (targets * output_stds) + output_means
-                    
-                    # Calculate loss on the unnormalized values
-                    unnorm_val_loss = self.criterion(unnorm_predictions, unnorm_targets)
-                    unnorm_epoch_val_loss += unnorm_val_loss.item()
-
-
             avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
-            unnorm_avg_epoch_val_loss = unnorm_epoch_val_loss / len(dataloader_val)
 
             if avg_epoch_val_loss < best_val_loss:
                 best_val_loss = avg_epoch_val_loss
                 self.best_FP_model_state = copy.deepcopy(self.FP_model.state_dict())
                 self.best_NN_model_state = copy.deepcopy(self.NN_model.state_dict())
+                # Updated print statement
                 print(f"New best model saved with validation loss: {best_val_loss:.4f}")
 
 
     def _predict(self, test_X):
-        #load best performing model of fp and NN
+        # Load the best performing models
         self.FP_model.load_state_dict(self.best_FP_model_state)
         self.NN_model.load_state_dict(self.best_NN_model_state)
-        text_X_norm = self.normalize_or_unnormalize_df(test_X, self.normalization_params, 'normalize')
-        test_dataset = MolecularPropertyDataset(text_X_norm, self.config.column_dict)
-        dataloader_test = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=self.collate_fn)
+        
+        # 1. Normalize the input features using the parameters from the training set
+        # This now works correctly for both min-max and z-score features.
+        test_X_norm = self.normalize_or_unnormalize_df(test_X, self.normalization_params, 'normalize')
+        
+        test_dataset = MolecularPropertyDataset(test_X_norm, self.config.column_dict)
+        dataloader_test = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, collate_fn=self.collate_fn)
 
         self.FP_model.eval()
         self.NN_model.eval()
         predictions = []
         with torch.no_grad():
-            for batch_val in tqdm(dataloader_test, desc="Testing"):
-                res_time = batch_val['res_time']
-                temp = batch_val['temp']
-                smiles = batch_val['smiles']
-                ratios = batch_val['ratios']
-                targets = batch_val['targets']
+            for batch_test in tqdm(dataloader_test, desc="Testing"):
+                res_time, temp, smiles, ratios = (
+                    batch_test['res_time'], batch_test['temp'], batch_test['smiles'], batch_test['ratios']
+                )
 
                 solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser)
                 yield_predictions = self.NN_model(solvent_fp, res_time, temp)
                 predictions.append(yield_predictions)
+                
         predictions = torch.cat(predictions, dim=0)
         pred_df = pd.DataFrame(predictions.cpu().numpy(), columns=self.config.target_labels)
-        # Unnormalize predictions
-        predictions = self.normalize_or_unnormalize_df(pred_df, self.normalization_params, 'unnormalize')
-                
-                
-        return predictions
+        
+        # 2. REMOVED: No longer need to un-normalize predictions
+        # The model output is already on the correct scale.
+        
+        return pred_df
     
 
 class PositionalEncoding(nn.Module):
@@ -508,7 +508,7 @@ class FeedForwardNeuralNetwork(nn.Module):
     def __init__(self, input_dim: int, output_dim: int, hidden_dim_factor: int):
         super(FeedForwardNeuralNetwork, self).__init__()
 
-        ff_dimension = hidden_dim_factor * output_dim
+        ff_dimension = hidden_dim_factor * input_dim
 
         # First linear layer: 10 inputs, 20 outputs
         self.fc1 = nn.Linear(input_dim, ff_dimension)
@@ -608,9 +608,8 @@ class MultiModalRegressionTransformer(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def generate_square_subsequent_mask(self, sz: int) -> torch.Tensor:
-        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
-        return mask
+     # True where future positions should be masked
+        return torch.triu(torch.ones(sz, sz, dtype=torch.bool), diagonal=1)
 
     def forward(self,
                 token_type_vocab: dict,
@@ -961,7 +960,6 @@ class Utils():
             smiles_chemberta_fps = outputs.hidden_states[-1].mean(dim=1) # Shape: (batch_size, CHEMBE`RTA_FP_DIM)
 
         SMILES_fps[:, 2, :] = smiles_chemberta_fps
-
         return SMILES_fps
 
     def create_token_type_tensor(self, df, max_seq_length, column_dict, token_type_vocab):
@@ -997,9 +995,10 @@ class Config():
         'VALUE_COLUMNS': ['Value_0', 'Value_1', 'Value_2', 'Value_3', 'Value_4', 'Value_5',
                             'Value_6','Value_7', 'Value_8', 'Value_9', 'Value_10', 'Value_11'],
         'SMILES_COLUMNS': 'SMILES', 
+        'SOLVE_SMILES_COLUMN': 'SOLVENT SMILES', 
         'RATIO': 'SOLVENT Ratio',
-        'RES_TEMP_COLUMNS': ['Residence_Time', 'Temperature'], 
-        'YIELD_COLUMNS': ['SM', 'Product_2', 'Product_3']}
+        'RES_TEMP_COLUMNS': ['Residence Time', 'Temperature'], 
+        'YIELD_COLUMNS': ['SM', 'Product 2', 'Product 3']}
 
         self.token_types = ['WORD_TOKEN', 'SMILES_TOKEN', 'VALUE_TOKEN', 'MASK_TOKEN', 'CLS_TOKEN', 'SEP_TOKEN']
         self.word_tokens = ['alkane', 'aromatic', 'halohydrocarbon', 'ether', 'ketone', 'ester', 'nitrile', 'amine', 'amide', 'misc_N_compound', 'carboxylic_acid', 'monohydric_alcohol' , 'polyhydric_alcohol', 'other','ET30', 'alpha', 'beta', 'pi_star', 'SA', 'SB', 'SP', 'SdP', 'N_mol_cm3', 'n', 'fn', 'delta']
@@ -1007,7 +1006,19 @@ class Config():
         self.max_sequence_length = 28  # Maximum sequence length for the model
         self.word_vocab_size = len(self.word_tokens)
         self.token_type_vocab_size = len(self.token_types)
-        self.target_labels = self.column_dict['YIELD_COLUMNS']
+        self.target_labels = ['SM mean', 'Product 2 mean', 'Product 3 mean']
+    from rdkit import Chem
+
+    def canonicalize_smiles(self, smiles_list):
+        """
+        Canonicalizes a list of SMILES strings.
+        """
+        canonicalized = []
+        for smiles in smiles_list:
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is not None:
+                canonicalized.append(Chem.MolToSmiles(mol))
+        return canonicalized
 
 
 

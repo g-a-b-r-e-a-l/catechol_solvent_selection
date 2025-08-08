@@ -31,6 +31,7 @@ INPUT_LABELS_SINGLE_SOLVENT = [
     "Residence Time",
     "Temperature",
     "SOLVENT NAME",
+    "SOLVENT SMILES"
 ]
 
 INPUT_LABELS_FULL_DATA = [

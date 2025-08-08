@@ -1,12 +1,12 @@
 from .base_model import Model
-from .baseline import BaselineGPModel, BaselineModel
-from .gp import GPModel
-from .llm import LLMModel
-from .mlp import MLPModel
-from .np import NPModel
-from .ode import EODEModel, LODEModel, NODEModel
-
-ALL_MODELS = {
+#from .baseline import BaselineGPModel, BaselineModel
+#from .gp import GPModel
+#from .llm import LLMModel
+#from .mlp import MLPModel
+#from .np import NPModel
+#from .ode import EODEModel, LODEModel, NODEModel
+from .decoder import Decoder
+'''ALL_MODELS = {
     "GPModel": GPModel,
     "LLMModel": LLMModel,
     "MLPModel": MLPModel,
@@ -16,7 +16,9 @@ ALL_MODELS = {
     "EODEModel": EODEModel, 
     "NODEModel": NODEModel,
     "NPModel": NPModel,
-}
+}'''
+
+ALL_MODELS = {"DecoderModel": Decoder}
 
 
 def get_model(model_name: str, **kwargs) -> Model:
