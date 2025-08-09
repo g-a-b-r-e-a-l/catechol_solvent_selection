@@ -1,0 +1,54 @@
+-- Results ---
+1,1,1,3,3,3-Hexafluoropropan-2-ol: 0.0349
+2,2,2-Trifluoroethanol: 0.0277
+2-Methyltetrahydrofuran [2-MeTHF]: 0.0097
+Acetonitrile: 0.0156
+Acetonitrile.Acetic Acid: 0.0243
+Butanone [MEK]: 0.0019
+Cyclohexane: 0.0043
+DMA [N,N-Dimethylacetamide]: 0.0094
+Decanol: 0.0161
+Diethyl Ether [Ether]: 0.0174
+Dihydrolevoglucosenone (Cyrene): 0.0139
+Dimethyl Carbonate: 0.0139
+Ethanol: 0.0088
+Ethyl Acetate: 0.0005
+Ethyl Lactate: 0.0056
+Ethylene Glycol [1,2-Ethanediol]: 0.0285
+IPA [Propan-2-ol]: 0.0257
+MTBE [tert-Butylmethylether]: 0.0123
+Methanol: 0.0088
+Methyl Propionate: 0.0010
+THF [Tetrahydrofuran]: 0.0080
+Water.2,2,2-Trifluoroethanol: 0.0075
+Water.Acetonitrile: 0.0185
+tert-Butanol [2-Methylpropan-2-ol]: 0.0009
+Average MSE: 0.0131  
+
+50 epochs
+--- Results ---
+1,1,1,3,3,3-Hexafluoropropan-2-ol: 0.0430
+2,2,2-Trifluoroethanol: 0.0281
+2-Methyltetrahydrofuran [2-MeTHF]: 0.0041
+Acetonitrile: 0.0052
+Acetonitrile.Acetic Acid: 0.0208
+Butanone [MEK]: 0.0026
+Cyclohexane: 0.0020
+DMA [N,N-Dimethylacetamide]: 0.0048
+Decanol: 0.0089
+Diethyl Ether [Ether]: 0.0053
+Dihydrolevoglucosenone (Cyrene): 0.0068
+Dimethyl Carbonate: 0.0074
+Ethanol: 0.0020
+Ethyl Acetate: 0.0007
+Ethyl Lactate: 0.0049
+Ethylene Glycol [1,2-Ethanediol]: 0.0054
+IPA [Propan-2-ol]: 0.0106
+MTBE [tert-Butylmethylether]: 0.0051
+Methanol: 0.0024
+Methyl Propionate: 0.0015
+THF [Tetrahydrofuran]: 0.0018
+Water.2,2,2-Trifluoroethanol: 0.0094
+Water.Acetonitrile: 0.0039
+tert-Butanol [2-Methylpropan-2-ol]: 0.0005
+Average MSE: 0.0078

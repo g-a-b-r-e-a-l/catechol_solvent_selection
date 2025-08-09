@@ -7,6 +7,7 @@ import math
 import torch.optim as optim
 import torch.nn.functional as F  # Missing - used in MaskedMultiHeadSelfAttentionBlock
 from rdkit import Chem
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 
 
 import numpy as np
@@ -35,6 +36,8 @@ class Decoder(Model):
         learning_rate_NN: float = 1e-4,
         dropout_FP: float = 0.1,
         dropout_NN: float = 0.1,
+        NN_size: int = 16, 
+        hidden_factor: int = 2,
         epochs: int = 10,
         time_limit: float = 10800,
         batch_size: int = 16,
@@ -46,6 +49,8 @@ class Decoder(Model):
         self.lr_NN = learning_rate_NN
         self.dropout_FP = dropout_FP
         self.dropout_NN = dropout_NN
+        self.NN_size = NN_size
+        self.hidden_factor = hidden_factor
         self.epochs = epochs
         self.time_limit = time_limit
         self.training_start_time = None
@@ -68,8 +73,8 @@ class Decoder(Model):
         self.NN_model = NeuralNetworkModel(
             input_dim=128,
             output_dim=3, 
-            hidden_dim=16,  # Hidden dimension for the neural network
-            hidden_dim_factor=2,  # Factor to scale the hidden dimension
+            hidden_dim=NN_size,  # Hidden dimension for the neural network
+            hidden_dim_factor=hidden_factor,  # Factor to scale the hidden dimension
             dropout_rate=dropout_NN,
         )
 
@@ -77,6 +82,9 @@ class Decoder(Model):
         self.NN_optimizer = optim.AdamW(self.NN_model.parameters(), lr=self.lr_NN)
         self.criterion = nn.MSELoss()
         
+        # Use self.FP_optimizer and self.NN_optimizer
+        self.scheduler_FP = ReduceLROnPlateau(self.FP_optimizer, 'min', factor=0.5, patience=int(self.epochs/10))
+        self.scheduler_NN = CosineAnnealingLR(self.NN_optimizer, T_max=self.epochs)
 
 
     def load_data(self, data_path):
@@ -401,7 +409,8 @@ class Decoder(Model):
                     epoch_val_loss += val_loss.item()
 
             avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
-
+            self.scheduler_FP.step(avg_epoch_val_loss)
+            self.scheduler_NN.step()
             if avg_epoch_val_loss < best_val_loss:
                 best_val_loss = avg_epoch_val_loss
                 self.best_FP_model_state = copy.deepcopy(self.FP_model.state_dict())
