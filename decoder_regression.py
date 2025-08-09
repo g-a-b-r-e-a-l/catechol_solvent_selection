@@ -94,10 +94,10 @@ if __name__ == "__main__":
     
     # File Paths
     parser.add_argument('--pretrained_model_path', type=str,
-                        default="scripts/val_loss0.1097_DM_128_TL_2_heads_32.pth",
+                        default="val_loss0.1097_DM_128_TL_2_heads_32.pth",
                         help='Path to the pretrained model file.')
     parser.add_argument('--spange_path', type=str,
-                        default="scripts/spange_melt.csv",
+                        default="spange_melt.csv",
                         help='Path to the spange data file.')
     
     # Grid Search Hyperparameters
