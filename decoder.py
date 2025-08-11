@@ -2,9 +2,9 @@ import copy
 import os
 import sys
 
-# Add the project root directory to Python path
+'''# Add the project root directory to Python path
 project_root = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, project_root)
+sys.path.insert(0, project_root)'''
 
 
 import random
@@ -32,7 +32,7 @@ from torch.utils.data import DataLoader
 from catechol.data.data_labels import get_data_labels_mean_var
 from catechol.data.loader import generate_leave_one_out_splits, train_test_split
 
-from .base_model import Model
+from catechol.models.base_model import Model
 
 class Decoder(Model):
     def __init__(

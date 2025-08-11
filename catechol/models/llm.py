@@ -8,10 +8,10 @@ import pandas as pd
 import pkg_resources
 import torch
 import torch.nn as nn
-from rxnfp.models import SmilesClassificationModel
+#from rxnfp.models import SmilesClassificationModel
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
-from transformers import AutoConfig, AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoTokenizer, AutoModelForMaskedLM
 
 from catechol.data.data_labels import get_data_labels_mean_var
 from catechol.data.loader import generate_leave_one_out_splits, train_test_split
@@ -94,11 +94,11 @@ class LLMModel(Model):
             else:
                 raise ValueError(f"Unknown rxnfp model: {self.model_name}")
 
-            rxnfp_model = SmilesClassificationModel(
-                "bert", model_path, use_cuda=(self.device.type == "cuda")
-            )
-            self.backbone = rxnfp_model.model.bert
-            self.tokenizer = rxnfp_model.tokenizer
+            #rxnfp_model = SmilesClassificationModel(
+                #"bert", model_path, use_cuda=(self.device.type == "cuda")
+           # )
+            #self.backbone = rxnfp_model.model.bert
+            #self.tokenizer = rxnfp_model.tokenizer
 
             if hasattr(self.backbone, "classifier"):
                 del self.backbone.classifier
@@ -366,3 +366,5 @@ class LLMModel(Model):
     def _get_model_name(self) -> str:
         pretrained = "-rxnfp" if "rxnfp" in self.model_name.lower() else "-chemberta"
         return f"{self.__class__.__name__}{pretrained}"
+    
+

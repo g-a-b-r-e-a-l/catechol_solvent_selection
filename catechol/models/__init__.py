@@ -1,12 +1,12 @@
 from .base_model import Model
-#from .baseline import BaselineGPModel, BaselineModel
+'''#from .baseline import BaselineGPModel, BaselineModel
 #from .gp import GPModel
 #from .llm import LLMModel
 #from .mlp import MLPModel
 #from .np import NPModel
 #from .ode import EODEModel, LODEModel, NODEModel
-from .decoder import Decoder
-'''ALL_MODELS = {
+from decoder import Decoder
+ALL_MODELS = {
     "GPModel": GPModel,
     "LLMModel": LLMModel,
     "MLPModel": MLPModel,
@@ -16,7 +16,7 @@ from .decoder import Decoder
     "EODEModel": EODEModel, 
     "NODEModel": NODEModel,
     "NPModel": NPModel,
-}'''
+}
 
 ALL_MODELS = {"DecoderModel": Decoder}
 
@@ -28,3 +28,4 @@ def get_model(model_name: str, **kwargs) -> Model:
             f"Model `{model_name}` is not recognized. Remember to add your model to the `ALL_MODELS` lookup dictionary in `catechol/models/__init__.py`."
         )
     return ALL_MODELS[model_name](**kwargs)
+'''
