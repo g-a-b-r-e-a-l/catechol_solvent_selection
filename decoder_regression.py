@@ -96,7 +96,7 @@ if __name__ == "__main__":
     
     # File Paths
     parser.add_argument('--pretrained_model_path', type=str,
-                        default="val_loss0.1097_DM_128_TL_2_heads_32.pth",
+                        default="val_loss0.1074_DPR_0.1_MP_0.3_DM_64_TL_5_heads_16.pth",
                         help='Path to the pretrained model file.')
     parser.add_argument('--spange_path', type=str,
                         default="spange_melt.csv",
