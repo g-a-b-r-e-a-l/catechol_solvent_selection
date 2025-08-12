@@ -17,6 +17,7 @@ def train_decoder_once(pretrained_model_path, spange_path,
                        learning_rate_NN=1e-4,
                        dropout_FP=0.1,
                        dropout_NN=0.1,
+                       val_percentage=0.2,
                        NN_size=16,
                        hidden_factor=2,
                        epochs=10):
@@ -44,6 +45,7 @@ def train_decoder_once(pretrained_model_path, spange_path,
         learning_rate_NN=learning_rate_NN,
         dropout_FP=dropout_FP,
         dropout_NN=dropout_NN,
+        val_percentage=val_percentage, 
         NN_size=NN_size,
         hidden_factor=hidden_factor,
         epochs=epochs,
@@ -106,6 +108,8 @@ if __name__ == "__main__":
     parser.add_argument('--dropout_nn', type=float, default=0.1, help='Dropout value for the final neural network.')
     parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs.')
     parser.add_argument('--hidden_factor', type=int, default=2, help='Hidden factor for the model architecture.')
+    parser.add_argument('--val_percent', type=float, default=0.2, help='train test split percentage')
+
     
     # Learning Rates
     parser.add_argument('--lr_fp', type=float, default=1e-5, help='Learning rate for the fingerprint model.')
@@ -121,6 +125,7 @@ if __name__ == "__main__":
         learning_rate_NN=args.lr_nn,
         dropout_FP=args.dropout_fp,
         dropout_NN=args.dropout_nn,
+        val_percentage=args.val_percent, 
         NN_size=args.nn_size,
         hidden_factor=args.hidden_factor,
         epochs=args.epochs
@@ -145,8 +150,7 @@ if __name__ == "__main__":
         "dropout_nn": args.dropout_nn,
         "epochs": args.epochs,
         "hidden_factor": args.hidden_factor,
-        "lr_fp": args.lr_fp,
-        "lr_nn": args.lr_nn,
+        "val_percent":args.val_percent,
         "avg_mse": results["avg_mse"],
         "mse_per_solvent": json.dumps(results["mse_per_solvent"])
     }

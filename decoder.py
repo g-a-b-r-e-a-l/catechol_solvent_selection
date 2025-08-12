@@ -43,6 +43,7 @@ class Decoder(Model):
         learning_rate_NN: float = 1e-4,
         dropout_FP: float = 0.1,
         dropout_NN: float = 0.1,
+        val_percentage: float = 0.2,
         NN_size: int = 16, 
         hidden_factor: int = 2,
         epochs: int = 10,
@@ -62,6 +63,7 @@ class Decoder(Model):
         self.time_limit = time_limit
         self.training_start_time = None
         self.batch_size = batch_size
+        self.val_percentage = val_percentage
 
 
         self.config = Config()
@@ -78,7 +80,7 @@ class Decoder(Model):
         print(f"FP model loaded from {pretrained_model_path}.")
 
         self.NN_model = NeuralNetworkModel(
-            input_dim=128,
+            input_dim=64,
             output_dim=3, 
             hidden_dim=NN_size,  # Hidden dimension for the neural network
             hidden_dim_factor=hidden_factor,  # Factor to scale the hidden dimension
@@ -116,11 +118,11 @@ class Decoder(Model):
         model = MultiModalRegressionTransformer(
             chemberta_fp_dim=chemberta_dimension,
             column_vocab_size=self.config.word_vocab_size,
-            transformer_hidden_dim=128,
+            transformer_hidden_dim=64,
             max_sequence_length=self.config.max_sequence_length,
             token_type_vocab_size=self.config.token_type_vocab_size,
-            num_attention_heads=32,
-            num_transformer_layers=2,
+            num_attention_heads=16,
+            num_transformer_layers=5,
             dropout_rate=self.dropout_FP
         )
         
@@ -164,6 +166,103 @@ class Decoder(Model):
         validation_smiles = np.random.choice(smiles_strings, size=smiles_sample, replace=False)
         val_df = df[df['SOLVENT SMILES'].isin(validation_smiles)].copy()
         train_df = df[~df['SOLVENT SMILES'].isin(validation_smiles)].copy()
+        
+        if train_df.empty or val_df.empty:
+            raise ValueError("The split resulted in an empty training or validation set. Try running again.")
+
+        # 2. Identify numerical columns to potentially normalize
+        numerical_cols = train_df.select_dtypes(include=np.number).columns
+        
+        if numerical_cols.empty:
+            print("No numerical columns found for normalization.")
+            return train_df, val_df, {}
+            
+        normalization_params = {}
+        
+        # 3. Define bounds for min-max normalization for specific feature columns
+        bounds = {
+            "Residence Time": [0.0, 15.0],
+            "Temperature": [175.0, 225.0],
+        }
+
+        # Apply min-max normalization to specified feature columns
+        for column, (c_min, c_max) in bounds.items():
+            if column in train_df.columns and (c_max - c_min) != 0:
+                train_df.loc[:, column] = (train_df[column] - c_min) / (c_max - c_min)
+                val_df.loc[:, column] = (val_df[column] - c_min) / (c_max - c_min)
+                normalization_params[column] = {'min': c_min, 'max': c_max}
+
+        # 4. Apply Z-score normalization for other numerical feature columns
+        for col in numerical_cols:
+            # Skip columns already min-max normalized OR if they are a target column
+            if col in bounds or col in target_cols:
+                continue
+            
+            col_mean = train_df[col].mean()
+            col_std = train_df[col].std(ddof=0)
+            
+            normalization_params[col] = {'mean': col_mean, 'std': col_std}
+
+            if col_std == 0:
+                train_df.loc[:, col] = 0.0
+                val_df.loc[:, col] = 0.0
+            else:
+                train_df.loc[:, col] = (train_df[col] - col_mean) / col_std
+                val_df.loc[:, col] = (val_df[col] - col_mean) / col_std
+        
+        return train_df, val_df, normalization_params
+    
+    def train_test_split_and_zscore_normalize_data_leakage(self, df, validation_percentage, target_cols):
+        """
+        Splits the DataFrame by percentage and normalizes ONLY the feature columns.
+        Target columns are not normalized.
+
+        Args:
+            df (pd.DataFrame): The input DataFrame.
+            validation_percentage (float): The percentage of unique SMILES strings to hold out for validation (e.g., 0.2 for 20%).
+            target_cols (list): A list of column names that are targets and should not be normalized.
+        
+        Returns:
+            tuple: A tuple containing:
+                - pd.DataFrame: Normalized training set.
+                - pd.DataFrame: Normalized validation set.
+                - dict: Normalization parameters (mean/std or min/max) for the feature columns.
+        """
+        if df is None or df.empty:
+            raise ValueError("DataFrame is empty or not loaded correctly.")
+        if 'SOLVENT SMILES' not in df.columns:
+            raise ValueError("The DataFrame must contain a 'SOLVENT SMILES' column.")
+        if not 0 < validation_percentage < 1:
+            raise ValueError("validation_percentage must be between 0 and 1 (exclusive).")
+        
+        df.drop(columns=['Reaction SMILES', 'SOLVENT NAME'], inplace=True, errors='ignore')
+        print('here are columns:', df.columns)
+
+        # Calculate number of rows for validation based on percentage
+        total_rows = len(df)
+        val_size = int(total_rows * validation_percentage)
+        
+        if val_size == 0:
+            raise ValueError(
+                f"Validation percentage ({validation_percentage}) results in 0 rows for validation. "
+                f"With {total_rows} total rows, try a higher percentage."
+            )
+        
+        if val_size >= total_rows:
+            raise ValueError(
+                f"Validation percentage ({validation_percentage}) results in all or more rows being used for validation. "
+                f"With {total_rows} total rows, try a lower percentage."
+            )
+
+        print(f"Using {val_size} out of {total_rows} total rows for validation ({validation_percentage:.1%})")
+
+        # 1. Split data randomly by rows
+        shuffled_indices = np.random.permutation(df.index)
+        val_indices = shuffled_indices[:val_size]
+        train_indices = shuffled_indices[val_size:]
+        
+        val_df = df.loc[val_indices].copy()
+        train_df = df.loc[train_indices].copy()
         
         if train_df.empty or val_df.empty:
             raise ValueError("The split resulted in an empty training or validation set. Try running again.")
@@ -346,11 +445,18 @@ class Decoder(Model):
     def _train(self, train_X, train_Y):
         data_df = pd.concat([train_X, train_Y], axis=1)
         # Pass target columns to prevent their normalization
-        train_df, val_df, self.normalization_params = self.train_test_split_and_zscore_normalize_solvent_leakage(
+
+        train_df, val_df, self.normalization_params = self.train_test_split_and_zscore_normalize_data_leakage(
+            data_df, 
+            validation_percentage=self.val_percentage,
+            target_cols=train_Y.columns
+        )
+
+        '''train_df, val_df, self.normalization_params = self.train_test_split_and_zscore_normalize_solvent_leakage(
             data_df, 
             smiles_sample=3,
             target_cols=train_Y.columns
-        )
+        )'''
         
         train_dataset = MolecularPropertyDataset(train_df, self.config.column_dict)
         val_dataset = MolecularPropertyDataset(val_df, self.config.column_dict)
