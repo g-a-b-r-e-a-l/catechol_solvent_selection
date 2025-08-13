@@ -508,6 +508,7 @@ class Decoder(Model):
             self.FP_model.eval()
             self.NN_model.eval()
             epoch_val_loss = 0
+
             with torch.no_grad():
                 for batch_val in tqdm(dataloader_val, desc=f"Validation Epoch {epoch + 1}/{self.epochs}"):
                     res_time, temp, smiles, ratios, targets = (
@@ -521,15 +522,30 @@ class Decoder(Model):
                     val_loss = self.criterion(yield_predictions, targets)
                     epoch_val_loss += val_loss.item()
 
-            avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
-            self.scheduler_FP.step(avg_epoch_val_loss)
-            self.scheduler_NN.step()
-            if avg_epoch_val_loss < best_val_loss:
-                best_val_loss = avg_epoch_val_loss
-                self.best_FP_model_state = copy.deepcopy(self.FP_model.state_dict())
-                self.best_NN_model_state = copy.deepcopy(self.NN_model.state_dict())
-                # Updated print statement
-                print(f"New best model saved with validation loss: {best_val_loss:.4f}")
+                avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
+                self.scheduler_FP.step(avg_epoch_val_loss)
+                self.scheduler_NN.step()
+                
+                if avg_epoch_val_loss < best_val_loss:
+                    best_val_loss = avg_epoch_val_loss
+                    self.best_FP_model_state = copy.deepcopy(self.FP_model.state_dict())
+                    self.best_NN_model_state = copy.deepcopy(self.NN_model.state_dict())
+                    
+                    # Create the directory if it doesn't exist
+                    save_dir = 'best_models'
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+                        
+                    # Define the file paths
+                    fp_model_path = os.path.join(save_dir, 'FP_model.pt')
+                    nn_model_path = os.path.join(save_dir, 'NN_model.pt')
+                    
+                    # Save the new best models, overwriting the old ones
+                    torch.save(self.best_FP_model_state, fp_model_path)
+                    torch.save(self.best_NN_model_state, nn_model_path)
+                    
+                    # Updated print statement
+                    print(f"New best models saved with validation loss: {best_val_loss:.4f} in '{save_dir}' directory.")
 
 
     def _predict(self, test_X):
