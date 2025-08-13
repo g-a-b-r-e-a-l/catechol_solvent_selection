@@ -370,7 +370,7 @@ class Decoder(Model):
         }        
 
     def generate_fp(self, model, batch_smiles, ratios, featuriser, decider):
-        epoch, store = decider
+        batch_idx, store = decider
         look_up = {}
         count = 0
         total_smiles = []
@@ -439,7 +439,7 @@ class Decoder(Model):
             
             # Create a unique filename that includes the epoch number
             # The filename will look like "fingerprints_epoch_1.json", "fingerprints_epoch_2.json", etc.
-            save_path = os.path.join(save_dir, f"fingerprints_epoch_{epoch}.json")
+            save_path = os.path.join(save_dir, f"fingerprints_batch_{batch_idx}.json")
             
             with open(save_path, "w") as f:
                 json.dump(store_dict, f, indent=2)
@@ -497,9 +497,10 @@ class Decoder(Model):
 
                 self.FP_optimizer.zero_grad()
                 self.NN_optimizer.zero_grad()
-                train_decider = epoch, False
+                train_decider = batch_idx, False
+                t_save_data = False, epoch, smiles
                 solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser, train_decider)
-                yield_predictions = self.NN_model(solvent_fp, res_time, temp)
+                yield_predictions = self.NN_model(solvent_fp, res_time, temp, t_save_data)
 
                 train_loss = self.criterion(yield_predictions, targets)
                 train_loss.backward()
@@ -519,10 +520,11 @@ class Decoder(Model):
                         batch_val['res_time'], batch_val['temp'], batch_val['smiles'],
                         batch_val['ratios'], batch_val['targets']
                     )
-                    val_decider = epoch, True
+                    val_decider = epoch, False
+                    v_save_data = True, epoch, smiles
 
                     solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser, val_decider)
-                    yield_predictions = self.NN_model(solvent_fp, res_time, temp)
+                    yield_predictions = self.NN_model(solvent_fp, res_time, temp, v_save_data)
                     
                     # Loss is calculated directly on raw-scale values
                     val_loss = self.criterion(yield_predictions, targets)
@@ -827,11 +829,32 @@ class NeuralNetworkModel(nn.Module):
 
         self.yield_pred_head = FeedForwardNeuralNetwork(hidden_dim, output_dim, hidden_dim_factor)
 
-    def forward(self, spange_fp, res_time, temp):
+    def forward(self, spange_fp, res_time, temp, save_data):
+        """
+        Performs a forward pass and optionally saves the fp_projection embeddings.
+        
+        Args:
+            spange_fp (torch.Tensor): The fingerprint tensor from the previous layer.
+            res_time (torch.Tensor): The residence time tensor.
+            temp (torch.Tensor): The temperature tensor.
+            save_data (tuple): A tuple containing (store: bool, batch_idx: int, smiles: list).
+                            'store' determines if embeddings are saved.
+                            'batch_idx' is used for the filename.
+                            'smiles' is a list of corresponding SMILES strings.
+        
+        Returns:
+            torch.Tensor: The predicted yields.
+        """
+        
+        # Unpack the saving parameters from the tuple
+        store, batch_idx, smiles = save_data
+        
+        # Original forward pass logic begins here
         fp_projection = self.fp_projection(spange_fp)
         res_time_projection = self.res_time_projection(res_time.unsqueeze(1))
         temp_projection = self.temp_projection(temp.unsqueeze(1))
 
+        # Apply normalization and dropout
         fp_projection = self.LayerNorm(fp_projection)
         res_time_projection = self.LayerNorm(res_time_projection)
         temp_projection = self.LayerNorm(temp_projection)
@@ -839,7 +862,37 @@ class NeuralNetworkModel(nn.Module):
         fp_projection = self.dropout(fp_projection)
         res_time_projection = self.dropout(res_time_projection)
         temp_projection = self.dropout(temp_projection)
+        
+        # The embeddings from fp_projection are now ready to be saved.
+        # The saving logic is implemented here based on the 'store' flag.
+        if store:
+            print('STORING FP PROJECTION EMBEDDINGS')
+            
+            # Initialize a dictionary to hold SMILES -> embedding mapping
+            store_dict = {}
+            
+            # Ensure the lengths of smiles and fp_projection match
+            if len(smiles) != fp_projection.shape[0]:
+                print(f"Warning: smiles list has length {len(smiles)}, but fp_projection has {fp_projection.shape[0]} rows. Skipping save.")
+            else:
+                # Iterate through the batch to populate the dictionary
+                for i, smile_str in enumerate(smiles):
+                    # Detach the tensor, move to CPU, and convert to a list for JSON serialization
+                    embedding = fp_projection[i].detach().cpu().tolist()
+                    store_dict[smile_str] = embedding
 
+                # Define the base directory for saving JSON files
+                save_dir = "solvent_fps_proj"
+                os.makedirs(save_dir, exist_ok=True)
+                
+                # Create a unique filename for the batch
+                save_path = os.path.join(save_dir, f"projection_embeddings_epoch_{batch_idx}.json")
+                
+                # Save the dictionary to the JSON file
+                with open(save_path, "w") as f:
+                    json.dump(store_dict, f, indent=2)
+
+        # Continue with the rest of the original forward pass logic
         combination = fp_projection + res_time_projection + temp_projection
         yields = self.yield_pred_head(combination)
 
