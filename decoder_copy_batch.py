@@ -370,7 +370,7 @@ class Decoder(Model):
         }        
 
     def generate_fp(self, model, batch_smiles, ratios, featuriser, decider):
-        batch_idx, store = decider
+        batch_idx, epoch, store = decider
         look_up = {}
         count = 0
         total_smiles = []
@@ -436,10 +436,11 @@ class Decoder(Model):
             # Define the base directory where all JSON files will be stored
             save_dir = "solvent_fps"
             os.makedirs(save_dir, exist_ok=True)
-            
+            batch = batch_idx + (epoch * 40)
+
             # Create a unique filename that includes the epoch number
             # The filename will look like "fingerprints_epoch_1.json", "fingerprints_epoch_2.json", etc.
-            save_path = os.path.join(save_dir, f"fingerprints_batch_{batch_idx}.json")
+            save_path = os.path.join(save_dir, f"fingerprints_batch_{batch}.json")
             
             with open(save_path, "w") as f:
                 json.dump(store_dict, f, indent=2)
@@ -498,7 +499,7 @@ class Decoder(Model):
 
                 self.FP_optimizer.zero_grad()
                 self.NN_optimizer.zero_grad()
-                train_decider = batch_idx_t, False
+                train_decider = batch_idx_t, epoch, False
                 t_save_data = False, batch_idx_t, epoch, smiles
 
                 solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser, train_decider)
@@ -519,8 +520,8 @@ class Decoder(Model):
                             batch_val['res_time'], batch_val['temp'], batch_val['smiles'],
                             batch_val['ratios'], batch_val['targets']
                         )
-                        val_decider = batch_idx_t, True
-                        v_save_data = True, batch_idx_t, epoch, smiles
+                        val_decider = batch_idx_t, epoch, True
+                        v_save_data = False, batch_idx_t, epoch, smiles
 
                         solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser, val_decider)
                         yield_predictions = self.NN_model(solvent_fp, res_time, temp, v_save_data)
@@ -886,7 +887,7 @@ class NeuralNetworkModel(nn.Module):
                     store_dict[smile_str] = embedding
 
                 # Define the base directory for saving JSON files
-                save_dir = "solvent_fps_proj_batch"
+                save_dir = "solvent_fps_FP_batch"
                 os.makedirs(save_dir, exist_ok=True)
                 idx = batch_idx + (epoch * 40)
                 # Create a unique filename for the batch

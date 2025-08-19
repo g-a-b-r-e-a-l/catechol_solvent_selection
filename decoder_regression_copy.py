@@ -10,7 +10,7 @@ from catechol.data.loader import (
     replace_repeated_measurements_with_average,
 )
 from catechol import metrics
-from decoder_copy_batch import Decoder
+from decoder_copy import Decoder
 
 def train_decoder_once(pretrained_model_path, spange_path,
                        learning_rate_FP=1e-5,

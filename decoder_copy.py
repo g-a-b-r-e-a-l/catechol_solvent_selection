@@ -521,7 +521,7 @@ class Decoder(Model):
                         batch_val['ratios'], batch_val['targets']
                     )
                     val_decider = epoch, False
-                    v_save_data = True, epoch, smiles
+                    v_save_data = False, epoch, smiles
 
                     solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser, val_decider)
                     yield_predictions = self.NN_model(solvent_fp, res_time, temp, v_save_data)
@@ -533,10 +533,21 @@ class Decoder(Model):
             avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
             self.scheduler_FP.step(avg_epoch_val_loss)
             self.scheduler_NN.step()
+
             if avg_epoch_val_loss < best_val_loss:
                 best_val_loss = avg_epoch_val_loss
                 self.best_FP_model_state = copy.deepcopy(self.FP_model.state_dict())
                 self.best_NN_model_state = copy.deepcopy(self.NN_model.state_dict())
+                
+                # Save the best model
+                # You can customize the filename as needed.
+                # The 'state_dict()' is saved, which is a common practice.
+                torch.save({
+                    'fp_model_state_dict': self.best_FP_model_state,
+                    'nn_model_state_dict': self.best_NN_model_state,
+                    'best_val_loss': best_val_loss,
+                }, 'best_model.pth')
+                
                 # Updated print statement
                 print(f"New best model saved with validation loss: {best_val_loss:.4f}")
 
