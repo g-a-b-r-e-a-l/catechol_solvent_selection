@@ -8,11 +8,15 @@ from catechol.data.loader import (
     generate_leave_one_out_splits,
     load_single_solvent_data,
     replace_repeated_measurements_with_average,
+    load_solvent_ramp_data, generate_leave_one_ramp_out_splits
 )
 from catechol import metrics
-from decoder import Decoder
+from decoder import Decoder as Single_Decoder
+from decoder_full_yields import Decoder as Full_Decoder
 
-def train_decoder_once(pretrained_model_path, spange_path,
+
+def train_decoder_once(dataset, pretrained_model_path, spange_path,
+                       freeze_fp = False,
                        learning_rate_FP=1e-5,
                        learning_rate_NN=1e-4,
                        dropout_FP=0.1,
@@ -26,33 +30,79 @@ def train_decoder_once(pretrained_model_path, spange_path,
     """
 
     # --- Load dataset ---
-    single_solvent = load_single_solvent_data()
-    X = single_solvent[[
-        "Residence Time", "Temperature", "Reaction SMILES",
-        "SOLVENT SMILES", "SOLVENT NAME", "SOLVENT Ratio"
-    ]]
-    Y = single_solvent[["SM", "Product 2", "Product 3"]]
-    print(f"Loaded dataset with {len(X)} samples.")
-    split_generator = generate_leave_one_out_splits(X, Y)
+    
+    if dataset == 'single_solvent':
+        single_solvent = load_single_solvent_data()
+        X = single_solvent[[
+            "Residence Time", "Temperature", "Reaction SMILES",
+            "SOLVENT SMILES", "SOLVENT NAME", "SOLVENT Ratio"
+        ]]
+        Y = single_solvent[["SM", "Product 2", "Product 3"]]
+        print(f"Loaded {dataset} dataset with {len(X)} samples.")
+        split_generator = generate_leave_one_out_splits(X, Y)
+
+    elif dataset == 'full_yields':
+        data, targets = load_solvent_ramp_data()
+        print(data.columns, targets.columns)
+        X = data[[
+            "Residence Time", "Temperature", 'SolventB%', "SOLVENT A NAME", "SOLVENT B NAME",
+            "SOLVENT A SMILES", "SOLVENT B SMILES", "SOLVENT A Ratio", "SOLVENT B Ratio", "RAMP NUM"
+        ]]
+        Y = targets[["SM", "Product 2", "Product 3"]]
+        print(f"Loaded {dataset} dataset with {len(X)} samples.")
+        split_generator = generate_leave_one_ramp_out_splits(X, Y)
+
+    else:
+        if dataset != 'full_yields' or 'single_solvent':
+            print("ERROR: DATASET SHOULD BE EITHER 'single_solvent' or 'full_yields'" )
+            raise ValueError
+
+    
+    
     mse_scores = []
-    solvent_names = []
+    test_items = []
 
     # --- Initialize model ---
-    model = Decoder(
-        pretrained_model_path=pretrained_model_path,
-        spange_path=spange_path,
-        learning_rate_FP=learning_rate_FP,
-        learning_rate_NN=learning_rate_NN,
-        dropout_FP=dropout_FP,
-        dropout_NN=dropout_NN,
-        val_percentage=val_percentage, 
-        NN_size=NN_size,
-        hidden_factor=hidden_factor,
-        epochs=epochs,
-        time_limit=10800,
-        batch_size=16
-    )
-    print("Initialized Decoder model with the following parameters:")
+    if dataset == 'single_solvent':
+        model = Single_Decoder(
+            pretrained_model_path=pretrained_model_path,
+            spange_path=spange_path,
+            freeze_fp=freeze_fp,
+            learning_rate_FP=learning_rate_FP,
+            learning_rate_NN=learning_rate_NN,
+            dropout_FP=dropout_FP,
+            dropout_NN=dropout_NN,
+            val_percentage=val_percentage, 
+            NN_size=NN_size,
+            hidden_factor=hidden_factor,
+            epochs=epochs,
+            time_limit=10800,
+            batch_size=16
+        )
+
+    elif dataset == 'full_yields':
+        model = Full_Decoder(
+            pretrained_model_path=pretrained_model_path,
+            spange_path=spange_path,
+            freeze_fp=freeze_fp,
+            learning_rate_FP=learning_rate_FP,
+            learning_rate_NN=learning_rate_NN,
+            dropout_FP=dropout_FP,
+            dropout_NN=dropout_NN,
+            val_percentage=val_percentage, 
+            NN_size=NN_size,
+            hidden_factor=hidden_factor,
+            epochs=epochs,
+            time_limit=10800,
+            batch_size=16
+        )
+
+    else:
+        if dataset != 'full_yields' or 'single_solvent':
+            print("ERROR: DATASET SHOULD BE EITHER 'single_solvent' or 'full_yields'" )
+            raise ValueError
+    
+    print(f"Initialized {dataset} Decoder model with the following parameters:")
     print(f"  NN_size: {NN_size}, Hidden_Factor: {hidden_factor}, Epochs: {epochs}")
     print(f"  Dropout_FP: {dropout_FP}, Dropout_NN: {dropout_NN}")
     
@@ -68,16 +118,23 @@ def train_decoder_once(pretrained_model_path, spange_path,
         predictions = model._predict(test_X)
         mse = metrics.mse(predictions, test_Y)
 
-        solvent = test_X["SOLVENT NAME"].unique()[0]
-        mse_scores.append(mse)
-        solvent_names.append(solvent)
 
-        print(f"  {solvent}: MSE = {mse:.4f}")
+        if dataset == 'single_solvent':
+
+            test_item = test_X["SOLVENT NAME"].unique()[0]
+
+        elif dataset == 'full_yields':
+            test_item = test_X["RAMP NUM"].unique()[0]
+
+        mse_scores.append(mse)
+        test_items.append(test_item)
+
+        print(f" Test Item is {test_item}: MSE = {mse:.4f}")
 
     avg_mse = sum(mse_scores) / len(mse_scores)
     print("\n--- Results ---")
-    for solvent, mse in zip(solvent_names, mse_scores):
-        print(f"{solvent}: {mse:.4f}")
+    for test_item, mse in zip(test_items, mse_scores):
+        print(f"{test_item}: {mse:.4f}")
     print(f"Average MSE: {avg_mse:.4f}")
 
     return {
@@ -87,7 +144,7 @@ def train_decoder_once(pretrained_model_path, spange_path,
         "dropout_FP": dropout_FP,
         "dropout_NN": dropout_NN,
         "avg_mse": avg_mse,
-        "mse_per_solvent": dict(zip(solvent_names, mse_scores))
+        "mse_per_solvent": dict(zip(test_items, mse_scores))
     }
 
 if __name__ == "__main__":
@@ -95,6 +152,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate a Decoder model with hyperparameter tuning.")
     
     # File Paths
+    parser.add_argument('--dataset', type=str,
+                        default="single_solvent",
+                        help='single_sovlent or full_yields')
     parser.add_argument('--pretrained_model_path', type=str,
                         default="val_loss0.1074_DPR_0.1_MP_0.3_DM_64_TL_5_heads_16.pth",
                         help='Path to the pretrained model file.')
@@ -112,15 +172,21 @@ if __name__ == "__main__":
 
     
     # Learning Rates
+    parser.add_argument('--freeze_fp_learning', action='store_true', help='Freeze the learning rate of the fingerprint model')
     parser.add_argument('--lr_fp', type=float, default=1e-5, help='Learning rate for the fingerprint model.')
     parser.add_argument('--lr_nn', type=float, default=1e-4, help='Learning rate for the neural network.')
 
     args = parser.parse_args()
+    dataset = args.dataset
+    freeze_fp=args.freeze_fp_learning
 
+    print(dataset)
     # --- Call Training Function ---
     results = train_decoder_once(
+        dataset=args.dataset,
         pretrained_model_path=args.pretrained_model_path,
         spange_path=args.spange_path,
+        freeze_fp=args.freeze_fp_learning,
         learning_rate_FP=args.lr_fp,
         learning_rate_NN=args.lr_nn,
         dropout_FP=args.dropout_fp,
@@ -135,11 +201,22 @@ if __name__ == "__main__":
     print(results)
 
     # --- Save per-run results ---
-    os.makedirs("results/decoder", exist_ok=True)
-    unique_id = uuid.uuid4().hex
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"run_{timestamp}_{unique_id}.csv"
-    save_path = os.path.join("results/decoder", filename)
+    if args.dataset == 'single_solvent':
+        os.makedirs(f"results/single_solv_decoder{freeze_fp}", exist_ok=True)
+        unique_id = uuid.uuid4().hex
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"run_{timestamp}_{unique_id}.csv"
+        save_path = os.path.join(f"results/single_solv_decoder{freeze_fp}", filename)
+
+    elif args.dataset == 'full_yields':
+        os.makedirs(f"results/full_data_decoder{freeze_fp}", exist_ok=True)
+        unique_id = uuid.uuid4().hex
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"run_{timestamp}_{unique_id}.csv"
+        save_path = os.path.join(f"results/full_data_decoder{freeze_fp}", filename)
+
+    else:
+        print('SOMETHING WAS SKIPPED')
 
     row = {
         "timestamp": timestamp,
@@ -152,8 +229,11 @@ if __name__ == "__main__":
         "hidden_factor": args.hidden_factor,
         "val_percent":args.val_percent,
         "avg_mse": results["avg_mse"],
-        "mse_per_solvent": json.dumps(results["mse_per_solvent"])
+        "mse_per_solvent": json.dumps(str(results["mse_per_solvent"]))
     }
+
+
+
 
     pd.DataFrame([row]).to_csv(save_path, index=False)
     print(f"Results saved to {save_path}")

@@ -52,10 +52,13 @@ class Decoder(Model):
         batch_size: int = 16,
         **kwargs,
     ):
-
         self.spange_path = spange_path
         self.freeze_fp = freeze_fp
-        self.lr_FP = learning_rate_FP
+        if not freeze_fp:
+            self.lr_FP = learning_rate_FP
+        else: 
+            self.lr_FP = None
+
         self.lr_NN = learning_rate_NN
         self.dropout_FP = dropout_FP
         self.dropout_NN = dropout_NN
@@ -233,8 +236,6 @@ class Decoder(Model):
         """
         if df is None or df.empty:
             raise ValueError("DataFrame is empty or not loaded correctly.")
-        if 'SOLVENT SMILES' not in df.columns:
-            raise ValueError("The DataFrame must contain a 'SOLVENT SMILES' column.")
         if not 0 < validation_percentage < 1:
             raise ValueError("validation_percentage must be between 0 and 1 (exclusive).")
         
@@ -293,7 +294,7 @@ class Decoder(Model):
                 normalization_params[column] = {'min': c_min, 'max': c_max}
 
         # 4. Apply Z-score normalization for other numerical feature columns
-        for col in numerical_cols:
+        '''for col in numerical_cols:
             # Skip columns already min-max normalized OR if they are a target column
             if col in bounds or col in target_cols:
                 continue
@@ -308,7 +309,7 @@ class Decoder(Model):
                 val_df.loc[:, col] = 0.0
             else:
                 train_df.loc[:, col] = (train_df[col] - col_mean) / col_std
-                val_df.loc[:, col] = (val_df[col] - col_mean) / col_std
+                val_df.loc[:, col] = (val_df[col] - col_mean) / col_std'''
         
         return train_df, val_df, normalization_params
     
@@ -355,12 +356,14 @@ class Decoder(Model):
         # Stack inputs from batch
         batch_df = pd.DataFrame(batch)
         targets = []
-        smiles_column = self.config.column_dict['SOLVE_SMILES_COLUMN']
-        ratio_column = self.config.column_dict['RATIO']
+        smiles_columns = [self.config.column_dict['SOLVENT_A']['SMILES'], self.config.column_dict['SOLVENT_B']['SMILES']]
+        ratio_columns = [self.config.column_dict['SOLVENT_A']['RATIO'], self.config.column_dict['SOLVENT_B']['RATIO']]
         res_temp_cols = self.config.column_dict['RES_TEMP_COLUMNS']
         targets_col = self.config.column_dict['YIELD_COLUMNS']
-        smiles = batch_df[smiles_column].to_list()
-        ratios = batch_df[ratio_column].to_list()
+        smiles = [batch_df[smiles_columns[0]].to_list(), batch_df[smiles_columns[1]].to_list()]
+        ratios = [batch_df[ratio_columns[0]].to_list(), batch_df[ratio_columns[1]].to_list()]
+        B_per_col = self.config.column_dict['B_PERCENT']
+        B_percen = batch_df[B_per_col].to_list()
 
         res_t = batch_df[res_temp_cols[0]].to_list()
         temp = batch_df[res_temp_cols[1]].to_list()
@@ -376,13 +379,14 @@ class Decoder(Model):
         res_time = torch.tensor(res_t, dtype=torch.float32)
         temp = torch.tensor(temp, dtype=torch.float32)
         targets = torch.tensor(targets, dtype=torch.float32).T 
-        
+        B_percent = torch.tensor(B_percen, dtype=torch.float32).unsqueeze(-1)
         return {
             'res_time' : res_time,
             'temp' : temp,
             'smiles' : smiles, # Contains original values, including NaNs where applicable.
             'ratios': ratios,
             'targets': targets, # Contains MASK_TOKEN for MLM-masked positions, original types otherwise.
+            'B_percent': B_percent
         }        
     def generate_fp(self, model, batch_smiles, ratios, featuriser):
         look_up = {}
@@ -429,7 +433,7 @@ class Decoder(Model):
                 values_ref=values_ref,
                 token_type_ids=token_type_ids,
                 attention_mask=attention_mask
-                ) 
+                )    
 
         batch_fps = []
         
@@ -458,8 +462,7 @@ class Decoder(Model):
 
     def _train(self, train_X, train_Y):
         data_df = pd.concat([train_X, train_Y], axis=1)
-        # Pass target columns to prevent their normalization
-
+        
         train_df, val_df, self.normalization_params = self.train_test_split_and_zscore_normalize_data_leakage(
             data_df, 
             validation_percentage=self.val_percentage,
@@ -489,7 +492,7 @@ class Decoder(Model):
         for epoch in range(self.epochs):
             if not self.freeze_fp:
                 self.FP_model.train()
-            else: 
+            else:
                 self.FP_model.eval()
 
             self.NN_model.train()
@@ -503,16 +506,18 @@ class Decoder(Model):
                         print(f"\n⏰ {self.early_stop_reason}")
                         break
                 
-                res_time, temp, smiles, ratios, targets = (
+                res_time, temp, smiles, ratios, B_percent, targets = (
                     batch_train['res_time'], batch_train['temp'], batch_train['smiles'],
-                    batch_train['ratios'], batch_train['targets']
+                    batch_train['ratios'], batch_train['B_percent'], batch_train['targets']
                 )
                 if not self.freeze_fp:
                     self.FP_optimizer.zero_grad()
                 self.NN_optimizer.zero_grad()
 
-                solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser)
-                yield_predictions = self.NN_model(solvent_fp, res_time, temp)
+                A_fp = self.generate_fp(self.FP_model, smiles[0], ratios[0], self.spange_featuriser)
+                B_fp = self.generate_fp(self.FP_model, smiles[1], ratios[1], self.spange_featuriser)
+                final_fps = (B_fp * B_percent) + (A_fp * (1 - B_percent))
+                yield_predictions = self.NN_model(final_fps, res_time, temp)
 
                 train_loss = self.criterion(yield_predictions, targets)
                 train_loss.backward()
@@ -524,30 +529,34 @@ class Decoder(Model):
             avg_epoch_loss = epoch_loss / len(dataloader_train)
 
             # Validation phase (now simpler)
-            self.FP_model.eval()
+            if not self.freeze_fp:
+                self.FP_model.eval()
             self.NN_model.eval()
             epoch_val_loss = 0
 
             with torch.no_grad():
                 for batch_val in tqdm(dataloader_val, desc=f"Validation Epoch {epoch + 1}/{self.epochs}"):
-                    res_time, temp, smiles, ratios, targets = (
+                    res_time, temp, smiles, ratios, B_percent, targets = (
                         batch_val['res_time'], batch_val['temp'], batch_val['smiles'],
-                        batch_val['ratios'], batch_val['targets']
+                        batch_val['ratios'], batch_val['B_percent'], batch_val['targets']
                     )
-                    solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser)
-                    yield_predictions = self.NN_model(solvent_fp, res_time, temp)
-                    
+                    A_fp = self.generate_fp(self.FP_model, smiles[0], ratios[0], self.spange_featuriser)
+                    B_fp = self.generate_fp(self.FP_model, smiles[1], ratios[1], self.spange_featuriser) 
+                    final_fps = (B_fp * B_percent) + (A_fp * (1 - B_percent))
+                   
+                    yield_predictions = self.NN_model(final_fps, res_time, temp)
+
                     # Loss is calculated directly on raw-scale values
                     val_loss = self.criterion(yield_predictions, targets)
+
                     epoch_val_loss += val_loss.item()
 
                 avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
                 if not self.freeze_fp:
-                    print('UPDATING LR SHEDULER')
+                    print('UPDATING FP LR - LEARNING RATE NOT FROZEN')
                     self.scheduler_FP.step(avg_epoch_val_loss)
                 else:
-                    print('NOT UPDATING LR SCHEDULAR')
-
+                    print('SKIPPED FP SCHEDULAR UPDATE')
                 self.scheduler_NN.step()
                 
                 if avg_epoch_val_loss < best_val_loss:
@@ -556,7 +565,7 @@ class Decoder(Model):
                     self.best_NN_model_state = copy.deepcopy(self.NN_model.state_dict())
                     
                     # Create the directory if it doesn't exist
-                    save_dir = 'best_models'
+                    save_dir = f'best_models/best_full_yield_models'
                     if not os.path.exists(save_dir):
                         os.makedirs(save_dir)
                         
@@ -589,12 +598,16 @@ class Decoder(Model):
         predictions = []
         with torch.no_grad():
             for batch_test in tqdm(dataloader_test, desc="Testing"):
-                res_time, temp, smiles, ratios = (
-                    batch_test['res_time'], batch_test['temp'], batch_test['smiles'], batch_test['ratios']
+                res_time, temp, smiles, ratios, B_percent = (
+                    batch_test['res_time'], batch_test['temp'], batch_test['smiles'], batch_test['ratios'], batch_test['B_percent']
                 )
 
-                solvent_fp = self.generate_fp(self.FP_model, smiles, ratios, self.spange_featuriser)
-                yield_predictions = self.NN_model(solvent_fp, res_time, temp)
+                A_fp = self.generate_fp(self.FP_model, smiles[0], ratios[0], self.spange_featuriser)
+                B_fp = self.generate_fp(self.FP_model, smiles[1], ratios[1], self.spange_featuriser) 
+
+                final_fps = (B_fp * B_percent) + (A_fp * (1 - B_percent))
+
+                yield_predictions = self.NN_model(final_fps, res_time, temp)
                 predictions.append(yield_predictions)
                 
         predictions = torch.cat(predictions, dim=0)
@@ -1157,8 +1170,9 @@ class Config():
         'VALUE_COLUMNS': ['Value_0', 'Value_1', 'Value_2', 'Value_3', 'Value_4', 'Value_5',
                             'Value_6','Value_7', 'Value_8', 'Value_9', 'Value_10', 'Value_11'],
         'SMILES_COLUMNS': 'SMILES', 
-        'SOLVE_SMILES_COLUMN': 'SOLVENT SMILES', 
-        'RATIO': 'SOLVENT Ratio',
+        'SOLVENT_A':{"SMILES": 'SOLVENT A SMILES', "RATIO": 'SOLVENT A Ratio'},
+        'SOLVENT_B':{"SMILES": 'SOLVENT B SMILES', "RATIO": 'SOLVENT B Ratio'}, 
+        'B_PERCENT': 'SolventB%',
         'RES_TEMP_COLUMNS': ['Residence Time', 'Temperature'], 
         'YIELD_COLUMNS': ['SM', 'Product 2', 'Product 3']}
 
