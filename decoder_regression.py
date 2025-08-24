@@ -124,14 +124,14 @@ def train_decoder_once(dataset, pretrained_model_path, spange_path,
             test_item = test_X["SOLVENT NAME"].unique()[0]
 
         elif dataset == 'full_yields':
-            test_item = test_X["RAMP NUM"].unique()[0]
+            test_item = float(test_X["RAMP NUM"].unique()[0])
 
-        mse_scores.append(mse)
+        mse_scores.append(float(mse))
         test_items.append(test_item)
 
         print(f" Test Item is {test_item}: MSE = {mse:.4f}")
 
-    avg_mse = sum(mse_scores) / len(mse_scores)
+    avg_mse = float(sum(mse_scores) / len(mse_scores))
     print("\n--- Results ---")
     for test_item, mse in zip(test_items, mse_scores):
         print(f"{test_item}: {mse:.4f}")
