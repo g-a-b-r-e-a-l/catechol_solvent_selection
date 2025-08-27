@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from catechol.data.data_labels import get_data_labels_mean_var
+from Catechol_Benchmark_repo.catechol.data.data_labels import get_data_labels_mean_var
 
 
 def nlpd(predictions: pd.DataFrame, ground_truth: pd.DataFrame) -> float:

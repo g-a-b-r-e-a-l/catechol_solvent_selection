@@ -4,13 +4,13 @@ import argparse
 import json
 import uuid
 from datetime import datetime
-from catechol.data.loader import (
+from Catechol_Benchmark_repo.catechol.data.loader import (
     generate_leave_one_out_splits,
     load_single_solvent_data,
     replace_repeated_measurements_with_average,
     load_solvent_ramp_data, generate_leave_one_ramp_out_splits
 )
-from catechol import metrics
+from Catechol_Benchmark_repo.catechol import metrics
 from decoder_single_solvent import Decoder as Single_Decoder
 from decoder_full_yields import Decoder as Full_Decoder
 

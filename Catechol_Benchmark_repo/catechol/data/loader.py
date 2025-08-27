@@ -5,7 +5,7 @@ from typing import Any, Generator
 import numpy as np
 import pandas as pd
 
-from catechol.data.data_labels import TARGET_CLAISEN_LABELS, TARGET_LABELS
+from Catechol_Benchmark_repo.catechol.data.data_labels import TARGET_CLAISEN_LABELS, TARGET_LABELS
 
 
 def replace_repeated_measurements_with_average(
@@ -29,7 +29,7 @@ def replace_repeated_measurements_with_average(
 
 def load_single_solvent_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load the train X and Y dataframes for the single solvent experiments."""
-    path = Path("data/single_solvent/catechol_single_solvent_yields.csv")
+    path = Path("Catechol_Benchmark_repo/data/single_solvent/catechol_single_solvent_yields.csv")
     assert path.exists(), f"Experiment data does not exist at {path.absolute()}"
     experiments = pd.read_csv(path)
     input_cols = ['Residence Time', 'Temperature', 'SOLVENT Ratio', 'SOLVENT SMILES'  
@@ -39,7 +39,7 @@ def load_single_solvent_data() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def load_solvent_ramp_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load the train X and Y dataframes for the solvent ramp experiments."""
-    path = Path("data/full_data/catechol_full_data_yields.csv")
+    path = Path("Catechol_Benchmark_repo/data/full_data/catechol_full_data_yields.csv")
     assert path.exists(), f"Experiment data does not exist at {path.absolute()}"
     experiments = pd.read_csv(path)
     input_cols = [

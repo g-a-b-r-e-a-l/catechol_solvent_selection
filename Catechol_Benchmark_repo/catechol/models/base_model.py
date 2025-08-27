@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 
 import pandas as pd
 
-from catechol.data.featurizations import FeaturizationType
-from catechol.data.normalize import normalize
+from Catechol_Benchmark_repo.catechol.data.featurizations import FeaturizationType
+from Catechol_Benchmark_repo.catechol.data.normalize import normalize
 
 
 class Model(ABC):

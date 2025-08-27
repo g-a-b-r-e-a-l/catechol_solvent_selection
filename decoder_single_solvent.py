@@ -29,10 +29,10 @@ from transformers import AutoTokenizer, AutoModelForMaskedLM
 from torch.utils.data import DataLoader
 
 
-from catechol.data.data_labels import get_data_labels_mean_var
-from catechol.data.loader import generate_leave_one_out_splits, train_test_split
+from Catechol_Benchmark_repo.catechol.data.data_labels import get_data_labels_mean_var
+from Catechol_Benchmark_repo.catechol.data.loader import generate_leave_one_out_splits, train_test_split
 
-from catechol.models.base_model import Model
+from Catechol_Benchmark_repo.catechol.models.base_model import Model
 
 class Decoder(Model):
     def __init__(
@@ -556,7 +556,7 @@ class Decoder(Model):
                     self.best_NN_model_state = copy.deepcopy(self.NN_model.state_dict())
                     
                     # Create the directory if it doesn't exist
-                    save_dir = 'best_models'
+                    '''save_dir = 'best_models'
                     if not os.path.exists(save_dir):
                         os.makedirs(save_dir)
                         
@@ -569,7 +569,7 @@ class Decoder(Model):
                     torch.save(self.best_NN_model_state, nn_model_path)
                     
                     # Updated print statement
-                    print(f"New best models saved with validation loss: {best_val_loss:.4f} in '{save_dir}' directory.")
+                    print(f"New best models saved with validation loss: {best_val_loss:.4f} in '{save_dir}' directory.")'''
 
 
     def _predict(self, test_X):
