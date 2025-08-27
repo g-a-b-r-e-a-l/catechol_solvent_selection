@@ -1,6 +1,35 @@
 # catechol_solvent_selection
+# Forked for the SoDaDE model testing
 Repository for the code and data on the catechol dataset for solvent selection and machine learning.
 
+The SoDaDE model has been added to this benchmark for testing, with the testing and loading code which has been set up by the authors of the paper. 
+
+#### The relevant additions to the code base are the following:
+-`fine_tune.py`: This file finetunes the SoDaDE model on a selected dataset through the `SoDaDE_regression.py` file. The full data task is pre-set but can be changed to the 'single solvent' task easily. Optimal parameters are present and it saves a .csv of the results in the `results` directory. The folder the .csv is saved into differs according to the task `full_data` or `single_solvent` and whether the SoDaDE model was frozen during finetuning `decoderFalse` (SoDaDE learning happened) or `decoderTrue` (SoDaDE model weights were frozen).
+
+-`SoDaDE_regression.py`: This model calls either `decoder_full_yields.py` or `decoder_single_solvent.py` depending on the desired task. Parameters can be manually specified for parameter searching.
+
+- `decoder_full_yields.py` which is the SoDaDE model adapted to the full_data dataset. The data loader loads the `data\full_data\catechol_full_data_yields.csv` and goes through 'leave one out splits' according to ramp number and solvent. 
+
+- `decoder_single_solvent.py` is the SoDaDE model adapted to the single_solvent dataset. The data loader loads the data `data\single_solvent\catechol_single_solvent_yields.csv` and runs 'leave one out' splits according to solvent name.
+
+- `SoDaDE_DM_64_TL_5_heads_16.pth` is the pretrained model from the SoDaDE repository. This is the model that achieved the lowest MSE on the property prediction task and is being fine-tuned on either the 'full_data' or 'single_solvent' tasks. 
+
+These scripts have been saved in the main directory for easy use and reference. 
+
+#### Additional directories which have been added to the repository are the following:
+
+- `batch_job_results` contains the results of large batch parameter grid search jobs completed on a computing cluster. For each task, 'full_data' or 'single_solvent', and whether the SoDaDE model was frozen a batch job was done and each result was saved into their respective directories (see description of `fine_tune.py`. )
+
+-`batch_job_results\results_analysis.ipynb` is a jypter notebook which collates each large folder of .csv files into 4 .csv files for easier analysis. In the 4 following cells, it shows the average MSE's of the best performing parameters for each task and whether the SoDaDE model was frozen or not. 
+
+- `models_for_plotting_solvent_embeddings` is a directory containing code to train an 'illustrative' model on the entire single solvent dataset to show how the solvent embeddings change coming out of the SoDaDE model and after the first layer of the neural network. These models are purely for illustrative purposes and extract embeddings for each epoch or batch trained.
+
+#### SoDaDE Requirements
+The entire catechol requirements.txt was not necessary to run the SoDaDE. There is an incompatability with the package `rxnfp` which causes clashes between packages. For just the SoDaDE model testing, `SoDaDE_requirements.txt` and `Python==3.11.13` were used.
+
+
+## Standard Catechol Solvent Selection README
 
 ### Installation
 

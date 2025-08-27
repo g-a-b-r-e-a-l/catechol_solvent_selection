@@ -1,6 +1,5 @@
 # Contributing
 
-
 ## How to contribute
 To avoid merge conflicts, we will be using [Pull Requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests) 
 to contribute to this repo. To make any changes:
