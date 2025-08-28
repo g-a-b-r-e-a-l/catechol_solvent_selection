@@ -15,7 +15,7 @@ pip install -r SoDaDE_requirements.txt
 ```
 
 ### The relevant additions to the code base are the following:
--`fine_tune.py`: This file finetunes the SoDaDE model on a selected dataset through the `SoDaDE_regression.py` file. The full data task is pre-set but can be changed to the 'single solvent' task easily. Optimal parameters are present and it saves a .csv of the results in the `results` directory. The folder the .csv is saved into differs according to the task `full_data` or `single_solvent` and whether the SoDaDE model was frozen during finetuning `decoderFalse` (SoDaDE learning happened) or `decoderTrue` (SoDaDE model weights were frozen).
+-`fine_tune.py`: This file finetunes the SoDaDE model on a selected dataset through the `SoDaDE_regression.py` file. The full data task is pre-set but can be changed to the 'single solvent' task easily. Optimal parameters are present and it saved a .csv of the results in the `results` directory. The folder the .csv is saved into differs according to the task `full_data` or `single_solvent` and whether the SoDaDE model was frozen during finetuning `decoderFalse` (SoDaDE learning happened) or `decoderTrue` (SoDaDE model weights were frozen).
 
 -`SoDaDE_regression.py`: This model calls either `decoder_full_yields.py` or `decoder_single_solvent.py` depending on the desired task. Parameters can be manually specified for parameter searching.
 
@@ -29,13 +29,11 @@ These scripts have been saved in the main directory for easy use and reference.
 
 ### Additional directories which have been added to the repository are the following:
 
-- `batch_job_results` contains the results of large batch parameter grid search jobs completed on a computing cluster. For each task, 'full_data' or 'single_solvent', and whether the SoDaDE model was frozen a batch job was done and each result was saved into their respective directories (see description of `fine_tune.py`. )
+- `SoDaDE_results` contains the results of large batch parameter grid search jobs completed on a computing cluster. For each task, 'full_data' or 'single_solvent', and whether the SoDaDE model was frozen a batch job was done and each result was saved into their respective directories (see description of `fine_tune.py`. The performance on each ramp or solvent is saved as a `.json` file in the directory. )
 
 -`batch_job_results\results_analysis.ipynb` is a jypter notebook which collates each large folder of .csv files into 4 .csv files for easier analysis. In the 4 following cells, it shows the average MSE's of the best performing parameters for each task and whether the SoDaDE model was frozen or not. 
 
 - `models_for_plotting_solvent_embeddings` is a directory containing code to train an 'illustrative' model on the entire single solvent dataset to show how the solvent embeddings change coming out of the SoDaDE model and after the first layer of the neural network. These models are purely for illustrative purposes and extract embeddings for each epoch or batch trained.
-
-
 
 ## Standard Catechol Solvent Selection README
 
