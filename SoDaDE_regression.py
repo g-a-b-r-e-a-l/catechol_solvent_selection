@@ -13,6 +13,8 @@ from Catechol_Benchmark_repo.catechol.data.loader import (
 from Catechol_Benchmark_repo.catechol import metrics
 from decoder_single_solvent import Decoder as Single_Decoder
 from decoder_full_yields import Decoder as Full_Decoder
+from decoder_single_solvent import set_seed as seed_single
+from decoder_full_yields import set_seed as seed_full
 
 
 def train_decoder_once(dataset, pretrained_model_path, spange_path,
@@ -25,6 +27,7 @@ def train_decoder_once(dataset, pretrained_model_path, spange_path,
                        NN_size=16,
                        hidden_factor=2,
                        epochs=10):
+    
     """
     Train and evaluate a Decoder model on leave-one-solvent-out splits.
     """
@@ -64,6 +67,7 @@ def train_decoder_once(dataset, pretrained_model_path, spange_path,
 
     # --- Initialize model ---
     if dataset == 'single_solvent':
+        seed_single(42)
         model = Single_Decoder(
             pretrained_model_path=pretrained_model_path,
             spange_path=spange_path,
@@ -81,6 +85,7 @@ def train_decoder_once(dataset, pretrained_model_path, spange_path,
         )
 
     elif dataset == 'full_yields':
+        seed_full(42)
         model = Full_Decoder(
             pretrained_model_path=pretrained_model_path,
             spange_path=spange_path,

@@ -182,17 +182,26 @@ def run_sodade_optimal_full_data(freeze_decoder=False):
     )
 
 if __name__ == "__main__":
-    # Run quick test automatically when called from command line
+    #Run quick test automatically when called from command line
     print("Running quick test (2 epochs, full_data dataset, decoder not frozen)...")
     results = run_sodade_quick_test(dataset="full_data", freeze_decoder=False)
     print(f"\nQuick test completed! Average MSE: {results['avg_mse']:.4f}")
     
     # Uncomment any of the lines below for other experiments:
     
-    # # Full run with optimal parameters for single solvent
-    # print("\nRunning full single solvent experiment...")
-    # results = run_sodade_optimal_single_solvent(freeze_decoder=False)
+    #Full run with optimal parameters for single solvent
+    #print("\nRunning full single solvent experiment...")
     
+    #print("\nRunning with custom parameters...")
+    #results = run_sodade_regression(
+        #dataset="single_solvent",
+        #freeze_decoder=False,
+        #epochs=50,
+        #nn_size=64,
+        #dropout_fp=0.03,
+       # hidden_factor=5,
+        #learning_rate_nn=5e-4
+    #)    
     # # Full run with optimal parameters for full dataset with frozen decoder
     # print("\nRunning full data experiment with frozen decoder...")
     # results = run_sodade_optimal_full_data(freeze_decoder=True)
