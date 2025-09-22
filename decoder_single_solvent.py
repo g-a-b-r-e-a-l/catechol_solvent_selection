@@ -34,6 +34,18 @@ from Catechol_Benchmark_repo.catechol.data.loader import generate_leave_one_out_
 
 from Catechol_Benchmark_repo.catechol.models.base_model import Model
 
+def set_seed(seed_value):
+    """Set seed for reproducibility."""
+    os.environ['PYTHONHASHSEED'] = str(seed_value)
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed_value)
+        torch.cuda.manual_seed_all(seed_value)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
 class Decoder(Model):
     def __init__(
         self,
@@ -543,10 +555,10 @@ class Decoder(Model):
 
                 avg_epoch_val_loss = epoch_val_loss / len(dataloader_val)
                 if not self.freeze_fp:
-                    print('UPDATING LR SHEDULER')
+                    print('UPDATING FP LR - LEARNING RATE NOT FROZEN')
                     self.scheduler_FP.step(avg_epoch_val_loss)
                 else:
-                    print('NOT UPDATING LR SCHEDULAR')
+                    print('NOT UPDATING LR SCHEDULER')
 
                 self.scheduler_NN.step()
                 

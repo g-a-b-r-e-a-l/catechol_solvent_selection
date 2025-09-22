@@ -154,11 +154,11 @@ def run_sodade_optimal_single_solvent(freeze_decoder=False):
     return run_sodade_regression(
         dataset="single_solvent",
         freeze_decoder=freeze_decoder,
-        nn_size=16,
-        dropout_fp=0.1,
-        dropout_nn=0.1,
-        epochs=10,
-        hidden_factor=2,
+        nn_size=128,
+        dropout_fp=0.05,
+        dropout_nn=0.05,
+        epochs=50,
+        hidden_factor=4,
         val_percentage=0.2,
         learning_rate_fp=1e-5,
         learning_rate_nn=1e-4
@@ -171,28 +171,40 @@ def run_sodade_optimal_full_data(freeze_decoder=False):
     return run_sodade_regression(
         dataset="full_data",
         freeze_decoder=freeze_decoder,
-        nn_size=16,
-        dropout_fp=0.1,
-        dropout_nn=0.1,
-        epochs=10,
-        hidden_factor=2,
+        nn_size=64,
+        dropout_fp=0.05,
+        dropout_nn=0.05,
+        epochs=50,
+        hidden_factor=4,
         val_percentage=0.2,
         learning_rate_fp=1e-5,
         learning_rate_nn=1e-4
     )
 
 if __name__ == "__main__":
-    # Run quick test automatically when called from command line
+    #Run quick test automatically when called from command line
     print("Running quick test (2 epochs, full_data dataset, decoder not frozen)...")
     results = run_sodade_quick_test(dataset="full_data", freeze_decoder=False)
     print(f"\nQuick test completed! Average MSE: {results['avg_mse']:.4f}")
     
     # Uncomment any of the lines below for other experiments:
     
-    # # Full run with optimal parameters for single solvent
-    # print("\nRunning full single solvent experiment...")
-    # results = run_sodade_optimal_single_solvent(freeze_decoder=False)
+    #Full run with optimal parameters for single solvent
+    #print("\nRunning full single solvent experiment...")
     
+    #print("\nRunning with custom parameters...")
+    #results = run_sodade_regression(
+        #dataset="full_data",
+        #freeze_decoder=False,
+        #nn_size=64,
+        #dropout_fp=0.05,
+        #dropout_nn=0.05,
+        #epochs=50,
+        #hidden_factor=4,
+        #val_percentage=0.2,
+        #learning_rate_fp=1e-5,
+        #learning_rate_nn=1e-4
+    #) 
     # # Full run with optimal parameters for full dataset with frozen decoder
     # print("\nRunning full data experiment with frozen decoder...")
     # results = run_sodade_optimal_full_data(freeze_decoder=True)
